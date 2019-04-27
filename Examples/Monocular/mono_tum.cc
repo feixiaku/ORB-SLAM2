@@ -61,49 +61,67 @@ int main(int argc, char **argv)
     cout << "Images in the sequence: " << nImages << endl << endl;
 
     // Main loop
+    bool mainLoopStop = false;
     cv::Mat im;
-    for(int ni=0; ni<nImages; ni++)
+    std::thread runthread([&]()
     {
-        // Read image from file
-        im = cv::imread(string(argv[3])+"/"+vstrImageFilenames[ni],CV_LOAD_IMAGE_UNCHANGED);
-        double tframe = vTimestamps[ni];
 
-        if(im.empty())
+        for(int ni=0; ni<nImages; ni++)
         {
-            cerr << endl << "Failed to load image at: "
-                 << string(argv[3]) << "/" << vstrImageFilenames[ni] << endl;
-            return 1;
+            // Read image from file
+            im = cv::imread(string(argv[3])+"/"+vstrImageFilenames[ni],CV_LOAD_IMAGE_UNCHANGED);
+            double tframe = vTimestamps[ni];
+
+            if(im.empty())
+            {
+                cerr << endl << "Failed to load image at: "
+                     << string(argv[3]) << "/" << vstrImageFilenames[ni] << endl;
+                mainLoopStop = true;
+                return 1;
+            }
+
+#ifdef COMPILEDWITHC11
+            std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+#else
+            std::chrono::monotonic_clock::time_point t1 = std::chrono::monotonic_clock::now();
+#endif
+
+            cout << "before TrackMonocular" << endl;
+            // Pass the image to the SLAM system
+            SLAM.TrackMonocular(im,tframe);
+            cout << "after TrackMonocular" << endl;
+
+#ifdef COMPILEDWITHC11
+            std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
+#else
+            std::chrono::monotonic_clock::time_point t2 = std::chrono::monotonic_clock::now();
+#endif
+
+            double ttrack= std::chrono::duration_cast<std::chrono::duration<double> >(t2 - t1).count();
+
+            vTimesTrack[ni]=ttrack;
+
+            // Wait to load the next frame
+            double T=0;
+            if(ni<nImages-1)
+                T = vTimestamps[ni+1]-tframe;
+            else if(ni>0)
+                T = tframe-vTimestamps[ni-1];
+
+            if(ttrack<T)
+                usleep((T-ttrack)*1e6);
         }
+    });
 
-#ifdef COMPILEDWITHC11
-        std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
-#else
-        std::chrono::monotonic_clock::time_point t1 = std::chrono::monotonic_clock::now();
-#endif
+    cout << "call SLAM.StartViewer()" << endl;
+    SLAM.StartViewer();
+    cout << "Viewer started, waiting for thread." << endl;
 
-        // Pass the image to the SLAM system
-        SLAM.TrackMonocular(im,tframe);
+    runthread.join();
 
-#ifdef COMPILEDWITHC11
-        std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
-#else
-        std::chrono::monotonic_clock::time_point t2 = std::chrono::monotonic_clock::now();
-#endif
-
-        double ttrack= std::chrono::duration_cast<std::chrono::duration<double> >(t2 - t1).count();
-
-        vTimesTrack[ni]=ttrack;
-
-        // Wait to load the next frame
-        double T=0;
-        if(ni<nImages-1)
-            T = vTimestamps[ni+1]-tframe;
-        else if(ni>0)
-            T = tframe-vTimestamps[ni-1];
-
-        if(ttrack<T)
-            usleep((T-ttrack)*1e6);
-    }
+    if(mainLoopStop)
+        return mainLoopStop;
+    cout << "Tracking thread joined..." << endl;
 
     // Stop all threads
     SLAM.Shutdown();

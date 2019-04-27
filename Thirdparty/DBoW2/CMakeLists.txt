@@ -24,6 +24,7 @@ set(SRCS_DUTILS
   DUtils/Random.cpp
   DUtils/Timestamp.cpp)
 
+SET(Opencv_DIR /usr/local/opencv-3.4.6/share/OpenCV/)
 find_package(OpenCV 3.0 QUIET)
 if(NOT OpenCV_FOUND)
    find_package(OpenCV 2.4.3 QUIET)
@@ -35,6 +36,6 @@ endif()
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
 include_directories(${OpenCV_INCLUDE_DIRS})
-add_library(DBoW2 SHARED ${SRCS_DBOW2} ${SRCS_DUTILS})
+add_library(DBoW2 STATIC ${SRCS_DBOW2} ${SRCS_DUTILS})
 target_link_libraries(DBoW2 ${OpenCV_LIBS})
 
